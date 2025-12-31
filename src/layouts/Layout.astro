@@ -1,22 +1,109 @@
-<!doctype html>
-<html lang="en">
-	<head>
-		<meta charset="UTF-8" />
-		<meta name="viewport" content="width=device-width" />
-		<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-		<meta name="generator" content={Astro.generator} />
-		<title>Astro Basics</title>
-	</head>
-	<body>
-		<slot />
-	</body>
-</html>
+---
+import SearchWidget from '../components/SearchWidget';
+import { fetchStrapi } from "../utils/strapi"; 
 
-<style>
-	html,
-	body {
-		margin: 0;
-		width: 100%;
-		height: 100%;
-	}
-</style>
+interface Props { 
+  title?: string; 
+  description?: string; 
+  image?: string; 
+}
+
+const { title, image } = Astro.props;
+
+// 👇 [수정] : any 타입을 추가해서 TypeScript 에러 해결!
+let global: any = {}; 
+
+try {
+    const globalRes = await fetchStrapi('global?populate=*');
+    global = globalRes?.data?.attributes || globalRes?.attributes || globalRes || {};
+} catch (e) {
+    console.error(e);
+}
+
+// 2. 변수 매핑
+const siteName = global.SiteName || "NotionGlaze";
+const siteDesc = global.SiteDescription || Astro.props.description || "노션으로 만든 나만의 웹사이트";
+const footerText = global.FooterText || `© ${new Date().getFullYear()} ${siteName}. All rights reserved.`;
+const lang = global.Language || "ko";
+const primaryColor = global.PrimaryColor || "#db2777"; 
+
+const fullTitle = title ? `${title} | ${siteName}` : siteName;
+
+// 3. 메뉴 데이터
+const rawMenuData = await fetchStrapi('single-pages?sort=Order:asc');
+const menuPages = Array.isArray(rawMenuData) ? rawMenuData : [];
+const sortedMenu = menuPages.sort((a: any, b: any) => (a.Order || 99) - (b.Order || 99));
+
+const [logoPrefix, logoSuffix] = siteName.includes('_') ? siteName.split('_') : [siteName, ""];
+---
+
+<!doctype html>
+<html lang={lang} class="scroll-smooth">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="description" content={siteDesc} />
+    <meta name="viewport" content="width=device-width" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <link rel="alternate" type="application/rss+xml" title={`${siteName} Feed`} href="/rss.xml" />
+    <title>{fullTitle}</title>
+    
+    {/* 👇 [핵심] 여기서 전역 CSS 변수로 선언해두면 Tailwind가 가져다 씁니다 */}
+    <style define:vars={{ primaryColor }}>
+      :root {
+        --color-primary: var(--primaryColor);
+      }
+    </style>
+  </head>
+  <body class="bg-slate-50 text-slate-900 font-sans flex flex-col min-h-screen">
+    
+    <nav class="bg-white/90 backdrop-blur-md border-b border-slate-200 sticky top-0 z-50 transition-all">
+      <div class="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
+        
+        {/* 로고 */}
+        <a href="/" class="text-xl font-black tracking-tight text-slate-900 hover:opacity-80 transition-opacity">
+           {logoSuffix ? (
+              <>
+                {logoPrefix}<span class="text-primary">{logoSuffix}</span>
+              </>
+           ) : (
+             <>
+               {siteName} <span class="text-primary">.</span>
+             </>
+           )}
+        </a>
+        
+        <div class="hidden md:block flex-1 max-w-sm mx-8">
+             <SearchWidget client:load /> 
+        </div>
+
+        {/* 메뉴 링크 */}
+        <div class="flex items-center space-x-6 text-sm font-bold text-slate-600">
+          {sortedMenu.map((page: any) => (
+            <a 
+              href={`/${page.Slug}`} 
+              class="transition-colors uppercase hover:text-primary" 
+            >
+              {page.Title}
+            </a>
+          ))}
+
+          <a href="/blog" class="transition-colors uppercase hover:text-primary">BLOG</a>
+          
+          <a href="/rss.xml" class="text-slate-400 hover:text-orange-500">
+             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a1 1 0 000 2c5.523 0 10 4.477 10 10a1 1 0 102 0C17 8.373 11.627 3 5 3z" /><path d="M4 9a1 1 0 011-1 7 7 0 017 7 1 1 0 11-2 0 5 5 0 00-5-5 1 1 0 01-1-1zM3 15a2 2 0 012 2 1 1 0 10-2 0 2 2 0 010-2z" /></svg>
+          </a>
+        </div>
+      </div>
+    </nav>
+
+    <slot />
+
+    <footer class="bg-white border-t border-slate-200 mt-auto py-10">
+      <div class="max-w-6xl mx-auto px-6 text-center text-slate-400 text-sm">
+        <p>{footerText}</p>
+        <p class="mt-2 text-xs opacity-70">Powered by Astro, Strapi & Cloudflare.</p>
+      </div>
+    </footer>
+  </body>
+</html>

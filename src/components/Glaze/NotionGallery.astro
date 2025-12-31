@@ -1,0 +1,70 @@
+---
+import { Client } from "@notionhq/client";
+
+const { id, title } = Astro.props;
+
+// 1. 노션 클라이언트 초기화 (서버 사이드에서만 실행됨)
+const notion = new Client({ auth: import.meta.env.NOTION_KEY });
+
+let items = [];
+
+try {
+  // 2. 데이터베이스 내용물 조회 (최대 12개만)
+  const response = await (notion.databases as any).query({
+    database_id: id,
+    page_size: 12, 
+    // 정렬이 필요하면 sorts 옵션 추가 가능
+  });
+
+  // 3. 필요한 정보(제목, 커버이미지, 태그)만 깔끔하게 정리
+  items = response.results.map((page: any) => {
+    // 제목 추출 (속성 이름이 'Name' 또는 '이름'이라고 가정)
+    const titleProp = page.properties['Name'] || page.properties['이름'] || page.properties['Title'];
+    const title = titleProp?.title?.[0]?.plain_text || "Untitled";
+    
+    // 커버 이미지 추출
+    let cover = "";
+    if (page.cover) {
+        cover = page.cover.type === 'external' ? page.cover.external.url : page.cover.file.url;
+    }
+
+    return { id: page.id, title, cover };
+  });
+
+} catch (e) {
+  console.error("Notion Gallery Fetch Error:", e);
+}
+---
+
+{/* 갤러리 렌더링 UI */}
+<div class="my-10">
+    <div class="flex items-center mb-4">
+        <span class="text-xl mr-2">🗂️</span>
+        <h3 class="font-bold text-slate-700 text-lg">{title}</h3>
+    </div>
+
+    {items.length > 0 ? (
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {items.map((item: any) => (
+                <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                    {/* 커버 이미지 */}
+                    <div class="h-40 bg-slate-100 overflow-hidden relative">
+                        {item.cover ? (
+                            <img src={item.cover} alt={item.title} class="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
+                        ) : (
+                            <div class="w-full h-full flex items-center justify-center text-3xl text-slate-300">📄</div>
+                        )}
+                    </div>
+                    {/* 제목 */}
+                    <div class="p-4">
+                        <h4 class="font-bold text-slate-800 text-sm truncate">{item.title}</h4>
+                    </div>
+                </div>
+            ))}
+        </div>
+    ) : (
+        <div class="p-4 bg-slate-50 text-slate-400 text-sm rounded-lg text-center border border-dashed border-slate-200">
+            갤러리를 불러올 수 없거나 비어있습니다.
+        </div>
+    )}
+</div>

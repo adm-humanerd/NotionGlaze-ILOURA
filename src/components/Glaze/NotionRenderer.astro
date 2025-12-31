@@ -1,0 +1,240 @@
+---
+import { slugify } from "../../utils/slugify";
+import RecursiveBlock from './NotionRenderer.astro';
+import NotionGallery from './NotionGallery.astro';
+
+interface Props {
+  blocks: any[];
+}
+
+const { blocks } = Astro.props;
+
+// 🎨 [색상 번역기] Notion 색상 -> Tailwind 클래스 매핑
+const colorMap: Record<string, { text: string; bg: string }> = {
+  default: { text: "text-slate-700", bg: "bg-white" },
+  gray:    { text: "text-slate-500", bg: "bg-slate-100" },
+  brown:   { text: "text-amber-700", bg: "bg-amber-100" },
+  orange:  { text: "text-orange-600", bg: "bg-orange-50" },
+  yellow:  { text: "text-yellow-600", bg: "bg-yellow-50" },
+  green:   { text: "text-emerald-600", bg: "bg-emerald-50" },
+  blue:    { text: "text-blue-600",   bg: "bg-blue-50" },
+  purple:  { text: "text-purple-600", bg: "bg-purple-50" },
+  pink:    { text: "text-pink-600",   bg: "bg-pink-50" },
+  red:     { text: "text-red-600",    bg: "bg-red-50" },
+};
+
+// 색상 클래스 추출 함수
+const getColorClass = (colorName: string, type: 'text' | 'bg' = 'text') => {
+  if (!colorName || colorName === 'default') return "";
+  
+  // 배경색인 경우 (예: "blue_background")
+  if (colorName.endsWith('_background')) {
+    const baseColor = colorName.replace('_background', '');
+    return colorMap[baseColor] ? colorMap[baseColor].bg : "";
+  }
+  
+  // 글자색인 경우 (예: "blue")
+  return colorMap[colorName] ? colorMap[colorName].text : "";
+};
+
+// 🔄 [전처리] 블록 그룹화
+const processBlocks = (rawBlocks: any[]) => {
+  if (!rawBlocks || !Array.isArray(rawBlocks)) return [];
+  const processed = [];
+  let listGroup: any = null;
+
+  for (const block of rawBlocks) {
+    const isNum = block.type === 'numbered_list_item';
+    const isBul = block.type === 'bulleted_list_item';
+
+    if (isNum || isBul) {
+      const groupType = isNum ? 'numbered_list_group' : 'bulleted_list_group';
+      if (!listGroup || listGroup.type !== groupType) {
+        listGroup = { type: groupType, items: [] };
+        processed.push(listGroup);
+      }
+      listGroup.items.push(block);
+    } else {
+      listGroup = null;
+      processed.push(block);
+    }
+  }
+  return processed;
+};
+
+const modifiedBlocks = processBlocks(blocks);
+
+// ✍️ [Rich Text 렌더링] 색상 적용 로직 추가
+const renderRichText = (richTextArray: any[]) => {
+  if (!Array.isArray(richTextArray)) return "";
+  return richTextArray.map((t) => {
+    const content = t.plain_text || t.text?.content || "";
+    let styled = content;
+    const anno = t.annotations || {};
+
+    // 1. 기본 스타일
+    if (anno.bold) styled = `<strong>${styled}</strong>`;
+    if (anno.italic) styled = `<em>${styled}</em>`;
+    if (anno.strikethrough) styled = `<del>${styled}</del>`;
+    if (anno.code) styled = `<code class="bg-slate-100 text-slate-600 px-1 rounded font-mono text-sm border border-slate-200">${styled}</code>`;
+    
+    // 2. [핵심] 글자 색상 및 배경 색상 적용
+    if (anno.color && anno.color !== 'default') {
+      const colorClass = getColorClass(anno.color, anno.color.endsWith('_background') ? 'bg' : 'text');
+      // 배경색일 경우 padding을 살짝 줘서 하이라이트 느낌 내기
+      const extraStyle = anno.color.endsWith('_background') ? 'px-1 rounded' : '';
+      styled = `<span class="${colorClass} ${extraStyle}">${styled}</span>`;
+    }
+    
+    // 3. 링크
+    if (t.href) styled = `<a href="${t.href}" target="_blank" class="text-primary hover:underline transition-colors">${styled}</a>`;
+    
+    return styled;
+  }).join('');
+};
+
+// 텍스트 추출 (안전 모드)
+const getSafeText = (block: any) => {
+  if (!block) return "";
+  const type = block.type;
+  const value = block[type];
+
+  if (value) {
+      const textData = value.text || value.rich_text; 
+      if (Array.isArray(textData)) return renderRichText(textData);
+      if (typeof value.text === 'string') return value.text;
+  }
+  if (block.text && Array.isArray(block.text)) return renderRichText(block.text);
+  if (block.rich_text && Array.isArray(block.rich_text)) return renderRichText(block.rich_text);
+
+  return ""; 
+};
+---
+
+{modifiedBlocks.map((block: any) => {
+  const type = block.type;
+  const value = block[type] || {}; 
+  const htmlContent = getSafeText(block);
+  const childrenData = block.children || value.children || block.Content || []; 
+
+  switch (type) {
+    case 'numbered_list_group':
+      return (
+        <ol class="list-decimal list-outside ml-5 space-y-1 my-4 text-slate-700">
+          {block.items.map((item: any) => (
+             <li class="pl-2 leading-relaxed" set:html={getSafeText(item)}></li>
+          ))}
+        </ol>
+      );
+
+    case 'bulleted_list_group':
+      return (
+        <ul class="list-disc list-outside ml-5 space-y-1 my-4 text-slate-700 marker:text-primary">
+          {block.items.map((item: any) => (
+             <li class="pl-2 leading-relaxed" set:html={getSafeText(item)}></li>
+          ))}
+        </ul>
+      );
+
+    case 'paragraph':
+       if (!htmlContent) return <div class="h-2"></div>;
+       // 문단 전체에 색상이 적용된 경우 (Notion 블록 색상) 처리
+       const pColorClass = value.color ? getColorClass(value.color, 'text') : ""; 
+       return <p class={`mb-2 text-base md:text-lg leading-relaxed break-words ${pColorClass}`} set:html={htmlContent}></p>;
+
+    case 'heading_1':
+      return <h2 id={slugify(htmlContent.replace(/<[^>]*>/g, ''))} class="scroll-mt-24 text-3xl md:text-4xl font-black mt-12 mb-6 text-slate-900">{htmlContent}</h2>;
+    
+    case 'heading_2':
+      return <h3 id={slugify(htmlContent.replace(/<[^>]*>/g, ''))} class="scroll-mt-24 text-2xl md:text-3xl font-bold mt-10 mb-4 text-slate-800">{htmlContent}</h3>;
+    
+    case 'heading_3':
+      return <h4 id={slugify(htmlContent.replace(/<[^>]*>/g, ''))} class="scroll-mt-24 text-xl md:text-2xl font-bold mt-8 mb-3 text-slate-800">{htmlContent}</h4>;
+
+    case 'divider':
+      return <hr class="my-8 border-t-2 border-slate-100" />;
+
+    case 'quote':
+      return (
+          <blockquote class="border-l-4 border-primary pl-5 py-3 my-8 bg-slate-50 rounded-r-lg italic text-slate-600 text-lg">
+             <span set:html={htmlContent}></span>
+          </blockquote>
+      );
+
+    // 🎨 [Callout 색상 적용]
+    case 'callout':
+      const iconSrc = value.icon || block.icon;
+      let IconEl = null;
+      
+      // Callout 배경색 처리 (기본값: bg-slate-50, 노션 색상 있으면 그 색으로)
+      const calloutColor = value.color;
+      let bgClass = "bg-slate-50 border-slate-200/60"; // 기본값
+      
+      if (calloutColor && calloutColor !== 'default') {
+          // Notion에서 'blue_background' 등으로 줌 -> 'bg-blue-50' 등으로 변환
+          const mappedBg = getColorClass(calloutColor, 'bg');
+          if (mappedBg) bgClass = `${mappedBg} border-transparent`; // 색상 있으면 보더 투명하게
+      }
+
+      if (iconSrc) {
+        if (typeof iconSrc === 'string') { 
+           IconEl = <span class="text-2xl mr-4 select-none">{iconSrc}</span>;
+        } else if (iconSrc.emoji) {
+           IconEl = <span class="text-2xl mr-4 select-none">{iconSrc.emoji}</span>;
+        } else if (iconSrc.file?.url || iconSrc.external?.url) {
+           const url = iconSrc.file?.url || iconSrc.external?.url;
+           IconEl = <img src={url} class="w-6 h-6 mr-4 object-contain" alt="icon" />;
+        }
+      }
+
+      return (
+          <div class={`flex items-start p-5 my-6 rounded-xl border shadow-sm ${bgClass}`}>
+              {IconEl}
+              <div class="flex-1 min-w-0">
+                  {htmlContent && (
+                    <div class="text-slate-800 font-medium leading-relaxed mb-1" set:html={htmlContent}></div>
+                  )}
+                  {childrenData && childrenData.length > 0 && (
+                      <div class="space-y-2 text-slate-700 mt-2">
+                        <RecursiveBlock blocks={childrenData} />
+                      </div>
+                  )}
+              </div>
+          </div>
+      );
+
+    case 'column_list':
+      if (!childrenData || childrenData.length === 0) return null;
+      return (
+          <div class="flex flex-col md:flex-row gap-6 my-8 w-full items-start">
+              <RecursiveBlock blocks={childrenData} />
+          </div>
+      );
+
+    case 'column':
+      if (!childrenData || childrenData.length === 0) return null;
+      return (
+          <div class="flex-1 w-full md:w-auto min-w-0 space-y-4">
+              <RecursiveBlock blocks={childrenData} />
+          </div>
+      );
+
+    case 'image':
+      const imgUrl = value.file?.url || value.external?.url;
+      if (!imgUrl) return null;
+      const caption = value.caption ? value.caption.map((c:any) => c.plain_text).join('') : "";
+      return (
+          <figure class="my-10">
+              <div class="rounded-2xl overflow-hidden border border-slate-100 shadow-sm">
+                 <img src={imgUrl} alt={caption} class="w-full h-auto" loading="lazy" />
+              </div>
+          </figure>
+      );
+      
+    case 'child_database':
+      return <NotionGallery id={block.id} title={block.child_database?.title || "Gallery"} />;
+
+    default:
+      return null;
+  }
+})}

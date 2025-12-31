@@ -1,0 +1,38 @@
+---
+import Layout from '../layouts/Layout.astro';
+import NotionRenderer from '../components/Glaze/NotionRenderer.astro';
+import { fetchStrapi } from "../utils/strapi";
+
+// 👇 [핵심 변경] getStaticPaths 삭제! 대신 URL에서 slug를 바로 가져옵니다.
+const { slug } = Astro.params;
+
+// 1. 해당 슬러그(slug)와 일치하는 페이지 데이터 1개를 실시간으로 가져옵니다.
+// Strapi 필터 문법: filters[Slug][$eq]=값
+const data = await fetchStrapi(`single-pages?filters[Slug][$eq]=${slug}&populate=*`);
+
+// 데이터가 없으면 404 페이지로 보냅니다.
+if (!data || data.length === 0) {
+  return Astro.redirect('/404');
+}
+
+const page = data[0];
+---
+
+<Layout title={page.Title}>
+  <main class="max-w-4xl mx-auto px-6 py-20">
+    <header class="mb-16 text-center">
+      <h1 class="text-4xl md:text-5xl font-black text-slate-900 mb-6">
+        {page.Title}
+      </h1>
+      {/* 👇 [수정] bg-pink-500 -> bg-primary */}
+      <div class="w-20 h-1.5 bg-primary mx-auto rounded-full"></div>
+    </header>
+
+    <div class="bg-white p-8 md:p-12 rounded-3xl shadow-sm border border-slate-100">
+      {/* 👇 여기도 div 추가 */}
+      <div class="notion-renderer space-y-4 text-slate-700 leading-relaxed font-sans">
+          <NotionRenderer blocks={page.Content} />
+      </div>
+    </div>
+  </main>
+</Layout>

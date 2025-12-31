@@ -1,0 +1,7 @@
+tunnel: 7bfba106-78e9-4df1-a43b-e17dc730794c
+credentials-file: /home/user/.cloudflared/7bfba106-78e9-4df1-a43b-e17dc730794c.json
+
+ingress:
+  - hostname: humanerd.kr
+    service: http://localhost:4321
+  - service: http_status:404
