@@ -31,8 +31,10 @@ const fullTitle = title ? `${title} | ${siteName}` : siteName;
 
 // 3. 메뉴 데이터
 const rawMenuData = await fetchStrapi('single-pages?sort=Order:asc');
-const menuPages = Array.isArray(rawMenuData) ? rawMenuData : [];
-const sortedMenu = menuPages.sort((a: any, b: any) => (a.Order || 99) - (b.Order || 99));
+let menuPages = Array.isArray(rawMenuData) ? rawMenuData : [];
+
+// GNB에 표시될 메뉴만 필터링 (Order가 0이 아닌 것)
+const gnbMenu = menuPages.filter((page: any) => page.Order !== 0);
 
 const [logoPrefix, logoSuffix] = siteName.includes('_') ? siteName.split('_') : [siteName, ""];
 ---
@@ -79,7 +81,7 @@ const [logoPrefix, logoSuffix] = siteName.includes('_') ? siteName.split('_') : 
 
         {/* 메뉴 링크 */}
         <div class="flex items-center space-x-6 text-sm font-bold text-slate-600">
-          {sortedMenu.map((page: any) => (
+          {gnbMenu.map((page: any) => (
             <a 
               href={`/${page.Slug}`} 
               class="transition-colors uppercase hover:text-primary" 
