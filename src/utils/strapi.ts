@@ -7,7 +7,7 @@ interface Props {
   
   export async function fetchStrapi(endpoint: string) {
     // .env 파일에서 주소와 토큰을 가져옵니다. (없으면 하드코딩된 값 사용)
-    const STRAPI_URL = import.meta.env.STRAPI_URL || "https://strapi.humanerd.kr";
+    const STRAPI_URL = import.meta.env.STRAPI_URL || "https://strapi.iloura.co.kr";
     const STRAPI_TOKEN = import.meta.env.STRAPI_TOKEN || "";
   
     // Strapi API 주소 조합 (예: https://.../api/test-pages)

@@ -8,7 +8,7 @@ const homeData = await fetchStrapi('single-pages?filters[Slug][$eq]=home&populat
 const homePage = homeData && homeData.length > 0 ? homeData[0] : null;
 
 // 2. 최신 글 가져오기
-const recentPosts = await fetchStrapi('test-pages?sort=publishedAt:desc&pagination[limit]=3&populate=*');
+const recentPosts = await fetchStrapi('post-pages?sort=publishedAt:desc&pagination[limit]=3&populate=*');
 ---
 
 <Layout title="Home">

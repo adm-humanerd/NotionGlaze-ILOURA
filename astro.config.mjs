@@ -29,12 +29,12 @@ export default defineConfig({
   },
   
   // 사이트 주소 (본인 도메인)
-  site: 'https://notionglaze.cc', 
+  site: 'https://iloura.co.kr', 
 
   vite: {
     // 이전 종속성 충돌 방지용 설정
     server: {
-      allowedHosts: ['notionglaze.cc', 'www.notionglaze.cc']
+      allowedHosts: ['iloura.co.kr', 'www.iloura.co.kr']
     },
     
     optimizeDeps: {

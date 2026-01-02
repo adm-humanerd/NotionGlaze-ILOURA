@@ -1,7 +1,7 @@
 import { fetchStrapi } from "../../utils/strapi";
 
 export async function GET() {
-  const posts = await fetchStrapi('test-pages?populate=*');
+  const posts = await fetchStrapi('post-pages?populate=*');
   
   const searchItems = posts.map((post: any) => ({
     title: post.Title,
