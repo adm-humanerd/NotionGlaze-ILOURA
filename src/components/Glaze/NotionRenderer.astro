@@ -143,13 +143,11 @@ const getSafeText = (block: any) => {
        return <p class={`mb-2 text-base md:text-lg leading-relaxed break-words ${pColorClass}`} set:html={htmlContent}></p>;
 
     case 'heading_1':
-      return <h2 id={slugify(htmlContent.replace(/<[^>]*>/g, ''))} class="scroll-mt-24 text-3xl md:text-4xl font-black mt-12 mb-6 text-slate-900">{htmlContent}</h2>;
-    
+      return <h2 id={slugify(htmlContent.replace(/<[^>]*>/g, ''))} class="scroll-mt-24 text-3xl md:text-4xl font-black mt-12 mb-6 text-slate-900" set:html={htmlContent}></h2>;
     case 'heading_2':
-      return <h3 id={slugify(htmlContent.replace(/<[^>]*>/g, ''))} class="scroll-mt-24 text-2xl md:text-3xl font-bold mt-10 mb-4 text-slate-800">{htmlContent}</h3>;
-    
+      return <h3 id={slugify(htmlContent.replace(/<[^>]*>/g, ''))} class="scroll-mt-24 text-2xl md:text-3xl font-bold mt-10 mb-4 text-slate-800" set:html={htmlContent}></h3>;
     case 'heading_3':
-      return <h4 id={slugify(htmlContent.replace(/<[^>]*>/g, ''))} class="scroll-mt-24 text-xl md:text-2xl font-bold mt-8 mb-3 text-slate-800">{htmlContent}</h4>;
+      return <h4 id={slugify(htmlContent.replace(/<[^>]*>/g, ''))} class="scroll-mt-24 text-xl md:text-2xl font-bold mt-8 mb-3 text-slate-800" set:html={htmlContent}></h4>;
 
     case 'divider':
       return <hr class="my-8 border-t-2 border-slate-100" />;
@@ -223,14 +221,31 @@ const getSafeText = (block: any) => {
       const imgUrl = value.file?.url || value.external?.url;
       if (!imgUrl) return null;
       const caption = value.caption ? value.caption.map((c:any) => c.plain_text).join('') : "";
+      
+      // 이미지를 감싸는 요소 (링크 기능 추가 등을 위해 구조 유지)
       return (
           <figure class="my-10">
               <div class="rounded-2xl overflow-hidden border border-slate-100 shadow-sm">
                  <img src={imgUrl} alt={caption} class="w-full h-auto" loading="lazy" />
               </div>
+              {caption && <figcaption class="text-center text-sm text-slate-500 mt-2">{caption}</figcaption>}
           </figure>
       );
-      
+
+    case 'bookmark':
+      const bookmarkUrl = value.url;
+      if (!bookmarkUrl) return null;
+      return (
+        <div class="my-6">
+          <a href={bookmarkUrl} target="_blank" rel="noopener noreferrer" class="flex items-center p-4 rounded-lg border border-slate-200 bg-white hover:bg-slate-50 transition-colors no-underline">
+             <div class="flex-1 min-w-0 pr-4">
+                <p class="text-sm text-slate-500 truncate">{bookmarkUrl}</p>
+             </div>
+             <span class="text-slate-400">↗</span>
+          </a>
+        </div>
+      );
+
     case 'child_database':
       return <NotionGallery id={block.id} title={block.child_database?.title || "Gallery"} />;
 
