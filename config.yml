@@ -1,7 +1,7 @@
-tunnel: 7bfba106-78e9-4df1-a43b-e17dc730794c
-credentials-file: /home/user/.cloudflared/7bfba106-78e9-4df1-a43b-e17dc730794c.json
+tunnel: ee16304e-8951-40d6-9553-a4d08672d380
+credentials-file: /root/.cloudflared/ee16304e-8951-40d6-9553-a4d08672d380.json
 
 ingress:
-  - hostname: humanerd.kr
+  - hostname: iloura.co.kr
     service: http://localhost:4321
   - service: http_status:404

@@ -8,6 +8,7 @@ interface Props {
 }
 
 const { blocks } = Astro.props;
+console.log("Rendering Blocks:", JSON.stringify(blocks, null, 2));
 
 // 🎨 [색상 번역기] Notion 색상 -> Tailwind 클래스 매핑
 const colorMap: Record<string, { text: string; bg: string }> = {
