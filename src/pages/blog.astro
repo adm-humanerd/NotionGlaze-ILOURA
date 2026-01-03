@@ -6,7 +6,7 @@ import { fetchStrapi } from "../utils/strapi";
 // 하지만 CSS 변수(--color-primary)는 Layout에서 이미 선언했으므로, 
 // 여기서는 class 이름만 'text-primary'로 쓰면 자동으로 적용됩니다!
 
-const posts = await fetchStrapi('test-pages?populate=*&sort=publishedAt:desc');
+const posts = await fetchStrapi('post-pages?populate=*&sort=publishedAt:desc');
 ---
 
 <Layout title="Home">
