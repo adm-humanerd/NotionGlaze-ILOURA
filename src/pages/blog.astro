@@ -1,69 +1,134 @@
 ---
 import Layout from '../layouts/Layout.astro';
+import NotionRenderer from '../components/Glaze/NotionRenderer.astro';
 import { fetchStrapi } from "../utils/strapi";
 
-// Strapi에서 글로벌 설정(색상 등)을 가져와야 'Insight Archive' 색상도 맞출 수 있습니다.
-// 하지만 CSS 변수(--color-primary)는 Layout에서 이미 선언했으므로, 
-// 여기서는 class 이름만 'text-primary'로 쓰면 자동으로 적용됩니다!
+// 1. [설정] Strapi 주소 가져오기 (이미지 경로 보정용)
+const STRAPI_URL = import.meta.env.STRAPI_URL || "https://strapi.humanerd.kr";
 
+// 2. 블로그 소개 정보 가져오기 (Notion에서 slug가 'blog'인 페이지)
+const blogInfoData = await fetchStrapi('single-pages?filters[Slug][$eq]=blog&populate=*');
+const blogInfo = blogInfoData?.[0];
+
+// 3. 게시글 목록 가져오기 (최신순)
+// populate=* 를 해야 Cover 이미지가 따라옵니다.
 const posts = await fetchStrapi('post-pages?populate=*&sort=publishedAt:desc');
+
+// 4. [핵심] 썸네일 이미지 주소 추출 및 보정 함수
+const getCoverImage = (post: any) => {
+  if (!post) return null;
+  const cover = post.Cover;
+  if (!cover) return null;
+
+  let imageUrl = null;
+  
+  // (A) Notion 원본 데이터 (External or File)
+  if (cover.type === 'external') imageUrl = cover.external?.url;
+  else if (cover.type === 'file') imageUrl = cover.file?.url;
+  
+  // (B) Strapi 미디어 필드
+  else if (cover.url) imageUrl = cover.url;
+  else if (cover.data?.attributes?.url) imageUrl = cover.data.attributes.url;
+
+  // 5. [중요] 상대 경로(/uploads/...)인 경우 도메인 붙여주기
+  if (imageUrl && imageUrl.startsWith('/')) {
+    return `${STRAPI_URL}${imageUrl}`;
+  }
+
+  return imageUrl;
+};
 ---
 
-<Layout title="Home">
+<Layout title={blogInfo ? blogInfo.Title : "Insight Archive"}>
   <main class="max-w-6xl mx-auto px-6 py-12 md:py-20">
     
-    {/* 히어로 섹션 */}
-    <div class="text-center mb-20 space-y-4">
-      <h1 class="text-5xl md:text-7xl font-black text-slate-900 tracking-tight">
-        Insight 
-        {/* 👇 [수정] text-pink-500 -> text-primary */}
-        <span class="text-primary">Archive</span>
+    {/* 히어로 섹션 (블로그 제목 & 소개) */}
+    <div class="text-center mb-20">
+      <h1 class="text-5xl md:text-7xl font-black text-slate-900 tracking-tight mb-6">
+        {blogInfo ? (
+            blogInfo.Title
+        ) : (
+            <span>Insight <span class="text-primary">Archive</span></span>
+        )}
       </h1>
-      <p class="text-xl text-slate-500 max-w-2xl mx-auto font-medium">
-        Notion에서 작성하고 자동으로 발행되는 블로그입니다.
-      </p>
+      
+      <div class="text-xl text-slate-500 max-w-2xl mx-auto font-medium leading-relaxed notion-renderer">
+        {blogInfo && blogInfo.Content ? (
+            <NotionRenderer blocks={blogInfo.Content} />
+        ) : (
+            <p>Notion에 [Slug: blog] 페이지를 만들면 이곳에 소개글이 나타납니다.</p>
+        )}
+      </div>
     </div>
 
     {/* 게시글 그리드 */}
-    <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-      {posts && posts.map((post: any) => (
-        <article class="group bg-white rounded-3xl overflow-hidden border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col h-full">
+    {posts && posts.length > 0 ? (
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+        {posts.map((post: any) => {
+          const coverUrl = getCoverImage(post);
           
-          {/* 이미지 영역 */}
-          <a href={`/post/${post.Slug}`} class="block overflow-hidden aspect-[1.5]">
-             {/* ... 이미지가 있으면 표시 ... */}
-             <div class="w-full h-full bg-slate-50 flex items-center justify-center group-hover:scale-105 transition-transform duration-500">
-                <span class="text-4xl">📝</span>
-             </div>
-          </a>
-
-          <div class="p-6 flex flex-col flex-1">
-            <div class="flex items-center gap-3 mb-3">
-               {/* 👇 [수정] 날짜/태그 색상도 primary로 변경 */}
-               <span class="text-xs font-bold text-primary bg-slate-50 px-2 py-1 rounded">
-                 {new Date(post.publishedAt).toLocaleDateString()}
-               </span>
-            </div>
-            
-            <h2 class="text-xl font-bold text-slate-900 mb-3 leading-snug group-hover:text-primary transition-colors">
-              <a href={`/post/${post.Slug}`}>
-                {post.Title}
+          return (
+            <article class="group bg-white rounded-3xl overflow-hidden border border-slate-100 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 flex flex-col h-full">
+              
+              {/* 이미지 영역 (링크 포함) */}
+              <a href={`/post/${post.Slug}`} class="block overflow-hidden aspect-[1.5] relative bg-slate-100">
+                 {coverUrl ? (
+                    // ✅ 이미지가 있을 때: 꽉 차게 렌더링
+                    <img 
+                      src={coverUrl} 
+                      alt={post.Title} 
+                      class="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+                      loading="lazy" 
+                    />
+                 ) : (
+                    // ❌ 이미지가 없을 때: 대체 아이콘 표시
+                    <div class="w-full h-full flex items-center justify-center text-slate-300 bg-slate-50">
+                       <span class="text-4xl group-hover:scale-110 transition-transform duration-300">📝</span>
+                    </div>
+                 )}
+                 {/* 호버 시 살짝 어두워지는 효과 */}
+                 <div class="absolute inset-0 bg-black/0 group-hover:bg-black/5 transition-colors duration-300"></div>
               </a>
-            </h2>
 
-            <p class="text-slate-500 text-sm line-clamp-2 mb-4 flex-1">
-              {/* 요약문이 있다면 표시 */}
-              클릭하여 내용을 확인하세요.
-            </p>
-            
-            <a href={`/post/${post.Slug}`} class="inline-flex items-center text-sm font-bold text-slate-900 hover:text-primary transition-colors mt-auto">
-              Read Article 
-              <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
-            </a>
-          </div>
-        </article>
-      ))}
-    </div>
+              {/* 텍스트 영역 */}
+              <div class="p-6 flex flex-col flex-1">
+                <div class="flex items-center gap-3 mb-3">
+                   {/* 날짜 */}
+                   <span class="text-xs font-bold text-primary bg-primary/5 px-2 py-1 rounded">
+                     {new Date(post.publishedAt).toLocaleDateString()}
+                   </span>
+                   {/* 태그 (첫 번째만 표시) */}
+                   {post.Tags && post.Tags.length > 0 && (
+                     <span class="text-xs text-slate-400">#{post.Tags[0]}</span>
+                   )}
+                </div>
+               
+                <h2 class="text-xl font-bold text-slate-900 mb-3 leading-snug group-hover:text-primary transition-colors">
+                  <a href={`/post/${post.Slug}`}>
+                    {post.Title}
+                  </a>
+                </h2>
+
+                <p class="text-slate-500 text-sm line-clamp-2 mb-4 flex-1 leading-relaxed">
+                  {post.Excerpt || "클릭하여 내용을 확인하세요."}
+                </p>
+                
+                <a href={`/post/${post.Slug}`} class="inline-flex items-center text-sm font-bold text-slate-900 hover:text-primary transition-colors mt-auto group/link">
+                  Read Article 
+                  <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4 ml-1 transition-transform group-hover/link:translate-x-1" viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M12.293 5.293a1 1 0 011.414 0l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414-1.414L14.586 11H3a1 1 0 110-2h11.586l-2.293-2.293a1 1 0 010-1.414z" clip-rule="evenodd" /></svg>
+                </a>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    ) : (
+      // 게시물이 없을 때
+      <div class="text-center py-20 bg-slate-50 rounded-3xl border border-dashed border-slate-200">
+        <p class="text-slate-500 mb-2">아직 게시물이 없습니다.</p>
+        <p class="text-xs text-slate-400">(Strapi 'post-pages' 컬렉션을 확인해주세요)</p>
+      </div>
+    )}
 
   </main>
 </Layout>
