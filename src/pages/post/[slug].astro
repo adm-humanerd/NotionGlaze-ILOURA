@@ -6,8 +6,8 @@ import { slugify } from "../../utils/slugify";
 
 const { slug } = Astro.params;
 
-// 1. 데이터 조회
-const data = await fetchStrapi(`test-pages?filters[Slug][$eq]=${slug}&populate=*`);
+// 1. [핵심 수정] 데이터 조회 (test-pages -> post-pages)
+const data = await fetchStrapi(`post-pages?filters[Slug][$eq]=${slug}&populate=*`);
 
 if (!data || data.length === 0) {
   return Astro.redirect('/404');
@@ -17,21 +17,25 @@ const post = data[0];
 
 // 2. 목차(TOC) 데이터 추출
 const headings = post.Content
-  .filter((block: any) => 
-    block.type === 'heading_1' || 
-    block.type === 'heading_2' || 
-    block.type === 'heading_3'
-  )
-  .map((block: any) => {
-    const text = block[block.type].rich_text?.[0]?.plain_text || block[block.type].text?.[0]?.plain_text || "";
-    return { text, slug: slugify(text), type: block.type };
-  });
+  ? post.Content.filter((block: any) => 
+      block.type === 'heading_1' || 
+      block.type === 'heading_2' || 
+      block.type === 'heading_3'
+    ).map((block: any) => {
+      const text = block[block.type].rich_text?.[0]?.plain_text || block[block.type].text?.[0]?.plain_text || "";
+      return { text, slug: slugify(text), type: block.type };
+    })
+  : [];
 
-// 3. 관련 글 조회
-const allPosts = await fetchStrapi('test-pages?populate=*');
+// 3. 관련 글 조회 (test-pages -> post-pages)
+// 최신순으로 가져와서 태그가 일치하는 것을 찾습니다.
+const allPosts = await fetchStrapi('post-pages?sort[0]=publishedAt:desc&populate=*');
+
 const relatedPosts = allPosts
-  .filter((p: any) => p.id !== post.id && p.Tags?.some((t: string) => post.Tags?.includes(t)))
-  .slice(0, 3);
+  ? allPosts
+      .filter((p: any) => p.id !== post.id && p.Tags?.some((t: string) => post.Tags?.includes(t)))
+      .slice(0, 3)
+  : [];
 ---
 
 <Layout title={post.Title}>
@@ -41,8 +45,10 @@ const relatedPosts = allPosts
     <article class="lg:col-span-8">
       <header class="mb-10">
         <div class="flex items-center gap-2 mb-4">
-            <span class="text-pink-600 font-bold text-xs uppercase bg-pink-50 px-3 py-1 rounded-full">Blog Post</span>
-            <span class="text-slate-400 text-xs">{new Date(post.publishedAt).toLocaleDateString()}</span>
+            <span class="text-primary font-bold text-xs uppercase bg-slate-100 px-3 py-1 rounded-full text-slate-600">Blog Post</span>
+            <span class="text-slate-400 text-xs">
+              {post.publishedAt ? new Date(post.publishedAt).toLocaleDateString() : ""}
+            </span>
         </div>
         <h1 class="text-3xl md:text-5xl font-black text-slate-900 leading-tight mb-6">
           {post.Title}
@@ -59,13 +65,14 @@ const relatedPosts = allPosts
       {/* 렌더러 호출 */}
       <div class="notion-renderer space-y-4 text-slate-700 leading-relaxed font-sans">
         <NotionRenderer blocks={post.Content} />
-     </div>
+      </div>
     </article>
 
-    {/* 사이드바 (목차) */}
+    {/* 사이드바 (목차 & 관련글) */}
     <aside class="hidden lg:block lg:col-span-4 space-y-8">
       <div class="sticky top-24">
         
+        {/* 목차 (TOC) */}
         {headings.length > 0 && (
           <div class="bg-white p-5 rounded-2xl border border-slate-100 shadow-sm mb-8">
             <h3 class="font-bold text-slate-900 mb-4 border-b pb-3 text-sm tracking-wide">ON THIS PAGE</h3>
@@ -76,10 +83,10 @@ const relatedPosts = allPosts
                     href={`#${h.slug}`} 
                     class={`block transition-colors duration-200 leading-snug py-1
                       ${h.type === 'heading_1' 
-                        ? 'text-slate-900 font-bold text-sm hover:text-pink-600'  // H1: 진하고 굵게
+                        ? 'text-slate-900 font-bold text-sm hover:text-primary' 
                         : h.type === 'heading_2' 
-                          ? 'text-slate-600 font-medium text-sm pl-2 border-l-2 border-transparent hover:border-pink-300 hover:text-pink-600' // H2: 중간 톤, 왼쪽 라인 효과
-                          : 'text-slate-400 text-xs pl-4 hover:text-slate-600' // H3: 연하고 작게
+                          ? 'text-slate-600 font-medium text-sm pl-2 border-l-2 border-transparent hover:border-primary/50 hover:text-primary' 
+                          : 'text-slate-400 text-xs pl-4 hover:text-slate-600' 
                       }
                     `}
                   >
@@ -99,8 +106,12 @@ const relatedPosts = allPosts
                     {relatedPosts.map((p: any) => (
                         <li>
                             <a href={`/post/${p.Slug}`} class="group block">
-                                <h4 class="text-sm font-bold text-slate-700 group-hover:text-pink-600 transition-colors line-clamp-2">{p.Title}</h4>
-                                <span class="text-xs text-slate-400">{new Date(p.publishedAt).toLocaleDateString()}</span>
+                                <h4 class="text-sm font-bold text-slate-700 group-hover:text-primary transition-colors line-clamp-2 leading-relaxed">
+                                  {p.Title}
+                                </h4>
+                                <span class="text-xs text-slate-400 mt-1 block">
+                                  {new Date(p.publishedAt).toLocaleDateString()}
+                                </span>
                             </a>
                         </li>
                     ))}
