@@ -8,7 +8,6 @@ interface Props {
 }
 
 const { blocks } = Astro.props;
-console.log("Rendering Blocks:", JSON.stringify(blocks, null, 2));
 
 // 🎨 [색상 번역기] Notion 색상 -> Tailwind 클래스 매핑
 const colorMap: Record<string, { text: string; bg: string }> = {
@@ -36,6 +35,50 @@ const getColorClass = (colorName: string, type: 'text' | 'bg' = 'text') => {
   
   // 글자색인 경우 (예: "blue")
   return colorMap[colorName] ? colorMap[colorName].text : "";
+};
+
+// 헬퍼 함수: 다양한 구조에서 안전하게 URL 추출 및 Strapi 주소 보정
+const resolveImageUrl = (imgObj: any) => {
+  if (!imgObj) return null;
+  
+  let url = null;
+
+  // 1. Strapi 미디어 데이터 (attributes 구조)
+  if (imgObj.data?.attributes?.url) {
+      url = imgObj.data.attributes.url;
+  } 
+  // 2. Strapi 미디어 데이터 (직접 url 구조)
+  else if (imgObj.data?.url) {
+      url = imgObj.data.url;
+  }
+  // 3. Notion 블록 구조 내에서 Strapi URL이 이미 치환되었는지 확인 (file/external)
+  else if (imgObj.file?.url) {
+      url = imgObj.file.url;
+  }
+  else if (imgObj.external?.url) {
+      url = imgObj.external.url;
+  }
+  // 4. 커스텀 필드로 저장된 URL (문자열)
+  else if (typeof imgObj.url === 'string') {
+      url = imgObj.url;
+  }
+
+  if (!url || typeof url !== 'string') return null;
+
+  // [핵심] Strapi 서버 주소 보정 및 상대 경로 처리
+  // 1. 상대 경로인 경우 Strapi URL 붙여줌
+  if (url.startsWith('/uploads/')) {
+      url = `https://strapi.iloura.co.kr${url}`;
+  } 
+  // 2. 구버전 도메인인 경우 신규 도메인으로 치환
+  else if (url.includes('strapi.humanerd.kr')) {
+      url = url.replace('strapi.humanerd.kr', 'strapi.iloura.co.kr');
+  }
+  
+  // [보안책] 만약 URL이 여전히 Notion 원본(S3)을 가리키고 있다면 로그를 남길 수 있음.
+  // 실제 서비스 환경에서는 n8n에서 이 URL을 모두 Strapi URL로 치환하여 내려주도록 보장해야 함.
+
+  return url;
 };
 
 // 🔄 [전처리] 블록 그룹화
@@ -101,10 +144,13 @@ const getSafeText = (block: any) => {
   const value = block[type];
 
   if (value) {
+      // Strapi-Notion 통합 방식에 따라 'text' 또는 'rich_text' 키에 데이터가 담김
       const textData = value.text || value.rich_text; 
       if (Array.isArray(textData)) return renderRichText(textData);
       if (typeof value.text === 'string') return value.text;
   }
+  
+  // 블록 루트에 직접 text/rich_text가 있는 경우 (하위 호환성)
   if (block.text && Array.isArray(block.text)) return renderRichText(block.text);
   if (block.rich_text && Array.isArray(block.rich_text)) return renderRichText(block.rich_text);
 
@@ -116,7 +162,9 @@ const getSafeText = (block: any) => {
   const type = block.type;
   const value = block[type] || {}; 
   const htmlContent = getSafeText(block);
-  const childrenData = block.children || value.children || block.Content || []; 
+  
+  // children 데이터 추출 로직 강화: block.children 또는 value.children
+  const childrenData = block.children || value.children || []; 
 
   switch (type) {
     case 'numbered_list_group':
@@ -156,33 +204,39 @@ const getSafeText = (block: any) => {
     case 'quote':
       return (
           <blockquote class="border-l-4 border-primary pl-5 py-3 my-8 bg-slate-50 rounded-r-lg italic text-slate-600 text-lg">
-             <span set:html={htmlContent}></span>
+             <div set:html={htmlContent}></div>
+             {childrenData && childrenData.length > 0 && (
+                <div class="mt-4 not-italic">
+                   <RecursiveBlock blocks={childrenData} />
+                </div>
+             )}
           </blockquote>
       );
 
-    // 🎨 [Callout 색상 적용]
     case 'callout':
-      const iconSrc = value.icon || block.icon;
+      const iconData = value.icon || block.icon;
       let IconEl = null;
       
-      // Callout 배경색 처리 (기본값: bg-slate-50, 노션 색상 있으면 그 색으로)
+      // Callout 배경색 처리
       const calloutColor = value.color;
-      let bgClass = "bg-slate-50 border-slate-200/60"; // 기본값
+      let bgClass = "bg-slate-50 border-slate-200/60"; 
       
       if (calloutColor && calloutColor !== 'default') {
-          // Notion에서 'blue_background' 등으로 줌 -> 'bg-blue-50' 등으로 변환
           const mappedBg = getColorClass(calloutColor, 'bg');
-          if (mappedBg) bgClass = `${mappedBg} border-transparent`; // 색상 있으면 보더 투명하게
+          if (mappedBg) bgClass = `${mappedBg} border-transparent`;
       }
 
-      if (iconSrc) {
-        if (typeof iconSrc === 'string') { 
-           IconEl = <span class="text-2xl mr-4 select-none">{iconSrc}</span>;
-        } else if (iconSrc.emoji) {
-           IconEl = <span class="text-2xl mr-4 select-none">{iconSrc.emoji}</span>;
-        } else if (iconSrc.file?.url || iconSrc.external?.url) {
-           const url = iconSrc.file?.url || iconSrc.external?.url;
-           IconEl = <img src={url} class="w-6 h-6 mr-4 object-contain" alt="icon" />;
+      if (iconData) {
+        if (typeof iconData === 'string') { 
+           IconEl = <span class="text-2xl mr-4 select-none">{iconData}</span>;
+        } else if (iconData.emoji) {
+           IconEl = <span class="text-2xl mr-4 select-none">{iconData.emoji}</span>;
+        } else {
+           // 아이콘 이미지도 resolveImageUrl 사용
+           const iconUrl = resolveImageUrl(iconData);
+           if (iconUrl) {
+             IconEl = <img src={iconUrl} class="w-6 h-6 mr-4 object-contain" alt="icon" />;
+           }
         }
       }
 
@@ -205,7 +259,7 @@ const getSafeText = (block: any) => {
     case 'column_list':
       if (!childrenData || childrenData.length === 0) return null;
       return (
-          <div class="flex flex-col md:flex-row gap-6 my-8 w-full items-start">
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 w-full my-8">
               <RecursiveBlock blocks={childrenData} />
           </div>
       );
@@ -213,17 +267,20 @@ const getSafeText = (block: any) => {
     case 'column':
       if (!childrenData || childrenData.length === 0) return null;
       return (
-          <div class="flex-1 w-full md:w-auto min-w-0 space-y-4">
+          <div class="flex flex-col gap-4 w-full">
               <RecursiveBlock blocks={childrenData} />
           </div>
       );
 
     case 'image':
-      const imgUrl = value.file?.url || value.external?.url;
-      if (!imgUrl) return null;
-      const caption = value.caption ? value.caption.map((c:any) => c.plain_text).join('') : "";
+      // Strapi 데이터와 원본 Notion 데이터 구조 모두 대응
+      const imgValue = value.image || value;
+      const imgUrl = resolveImageUrl(imgValue);
       
-      // 이미지를 감싸는 요소 (링크 기능 추가 등을 위해 구조 유지)
+      if (!imgUrl) return null;
+      const captionData = imgValue.caption;
+      const caption = captionData ? (Array.isArray(captionData) ? captionData.map((c:any) => c.plain_text).join('') : "") : "";
+      
       return (
           <figure class="my-10">
               <div class="rounded-2xl overflow-hidden border border-slate-100 shadow-sm">
@@ -248,7 +305,34 @@ const getSafeText = (block: any) => {
       );
 
     case 'child_database':
-      return <NotionGallery id={block.id} title={block.child_database?.title || "Gallery"} />;
+      // Strapi에서 이미 가공된 Gallery 데이터가 있다면 그것을 사용하고, 없다면 NotionGallery를 통해 실시간 fetch
+      if (value.items && Array.isArray(value.items)) {
+         return (
+            <div class="my-10">
+                <div class="flex items-center mb-4">
+                    <span class="text-xl mr-2">🗂️</span>
+                    <h3 class="font-bold text-slate-700 text-lg">{value.child_database?.title || value.title || "Gallery"}</h3>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {value.items.map((item: any) => (
+                        <div class="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md transition-shadow">
+                            <div class="h-40 bg-slate-100 overflow-hidden relative">
+                                {item.cover ? (
+                                    <img src={item.cover} alt={item.title} class="w-full h-full object-cover hover:scale-105 transition-transform duration-500" />
+                                ) : (
+                                    <div class="w-full h-full flex items-center justify-center text-3xl text-slate-300">📄</div>
+                                )}
+                            </div>
+                            <div class="p-4">
+                                <h4 class="font-bold text-slate-800 text-sm truncate">{item.title}</h4>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+         );
+      }
+      return <NotionGallery id={block.id} title={value.child_database?.title || value.title || "Gallery"} />;
 
     default:
       return null;

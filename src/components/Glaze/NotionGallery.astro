@@ -9,11 +9,9 @@ let errorMsg = null;
 
 try {
   // 데이터베이스 조회
-  const response = await (notion.databases as any).query({
+  const response = await (notion as any).databases.query({
     database_id: id,
     page_size: 12,
-    // 필요 시 필터 추가
-    // filter: { property: 'Status', status: { equals: 'Published' } } 
   });
 
   items = response.results.map((page: any) => {
@@ -32,7 +30,7 @@ try {
     return { id: page.id, title: titleText, cover };
   });
 
-} catch (e) {
+} catch (e: any) {
   console.error("Notion Gallery Fetch Error:", e);
   errorMsg = e.message; // 에러 메시지 저장
 }
