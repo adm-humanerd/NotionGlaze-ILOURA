@@ -75,9 +75,6 @@ const resolveImageUrl = (imgObj: any) => {
       url = url.replace('strapi.humanerd.kr', 'strapi.iloura.co.kr');
   }
   
-  // [보안책] 만약 URL이 여전히 Notion 원본(S3)을 가리키고 있다면 로그를 남길 수 있음.
-  // 실제 서비스 환경에서는 n8n에서 이 URL을 모두 Strapi URL로 치환하여 내려주도록 보장해야 함.
-
   return url;
 };
 
@@ -125,7 +122,6 @@ const renderRichText = (richTextArray: any[]) => {
     // 2. [핵심] 글자 색상 및 배경 색상 적용
     if (anno.color && anno.color !== 'default') {
       const colorClass = getColorClass(anno.color, anno.color.endsWith('_background') ? 'bg' : 'text');
-      // 배경색일 경우 padding을 살짝 줘서 하이라이트 느낌 내기
       const extraStyle = anno.color.endsWith('_background') ? 'px-1 rounded' : '';
       styled = `<span class="${colorClass} ${extraStyle}">${styled}</span>`;
     }
@@ -144,13 +140,11 @@ const getSafeText = (block: any) => {
   const value = block[type];
 
   if (value) {
-      // Strapi-Notion 통합 방식에 따라 'text' 또는 'rich_text' 키에 데이터가 담김
       const textData = value.text || value.rich_text; 
       if (Array.isArray(textData)) return renderRichText(textData);
       if (typeof value.text === 'string') return value.text;
   }
   
-  // 블록 루트에 직접 text/rich_text가 있는 경우 (하위 호환성)
   if (block.text && Array.isArray(block.text)) return renderRichText(block.text);
   if (block.rich_text && Array.isArray(block.rich_text)) return renderRichText(block.rich_text);
 
@@ -163,40 +157,82 @@ const getSafeText = (block: any) => {
   const value = block[type] || {}; 
   const htmlContent = getSafeText(block);
   
-  // children 데이터 추출 로직 강화: block.children 또는 value.children
-  const childrenData = block.children || value.children || []; 
+  // children 데이터 추출 로직 강화: block.children, value.children, 또는 block[type].children 대응
+  const childrenData = block.children || value.children || block[type]?.children || []; 
 
   switch (type) {
     case 'numbered_list_group':
       return (
         <ol class="list-decimal list-outside ml-5 space-y-1 my-4 text-slate-700">
-          {block.items.map((item: any) => (
-             <li class="pl-2 leading-relaxed" set:html={getSafeText(item)}></li>
-          ))}
+          {block.items.map((item: any) => {
+            const itemChildren = item.children || item[item.type]?.children || [];
+            return (
+              <li class="pl-2 leading-relaxed">
+                <span set:html={getSafeText(item)}></span>
+                {itemChildren.length > 0 && (
+                  <div class="mt-2 ml-4">
+                    <RecursiveBlock blocks={itemChildren} />
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ol>
       );
 
     case 'bulleted_list_group':
       return (
         <ul class="list-disc list-outside ml-5 space-y-1 my-4 text-slate-700 marker:text-primary">
-          {block.items.map((item: any) => (
-             <li class="pl-2 leading-relaxed" set:html={getSafeText(item)}></li>
-          ))}
+          {block.items.map((item: any) => {
+            const itemChildren = item.children || item[item.type]?.children || [];
+            return (
+              <li class="pl-2 leading-relaxed">
+                <span set:html={getSafeText(item)}></span>
+                {itemChildren.length > 0 && (
+                  <div class="mt-2 ml-4">
+                    <RecursiveBlock blocks={itemChildren} />
+                  </div>
+                )}
+              </li>
+            );
+          })}
         </ul>
       );
 
     case 'paragraph':
-       if (!htmlContent) return <div class="h-2"></div>;
-       // 문단 전체에 색상이 적용된 경우 (Notion 블록 색상) 처리
        const pColorClass = value.color ? getColorClass(value.color, 'text') : ""; 
-       return <p class={`mb-2 text-base md:text-lg leading-relaxed break-words ${pColorClass}`} set:html={htmlContent}></p>;
+       if (!htmlContent && childrenData.length === 0) return <div class="h-2"></div>;
+       return (
+         <div class="mb-2">
+           {htmlContent && <p class={`text-base md:text-lg leading-relaxed break-words ${pColorClass}`} set:html={htmlContent}></p>}
+           {childrenData.length > 0 && (
+             <div class="ml-6 mt-2">
+               <RecursiveBlock blocks={childrenData} />
+             </div>
+           )}
+         </div>
+       );
 
     case 'heading_1':
-      return <h2 id={slugify(htmlContent.replace(/<[^>]*>/g, ''))} class="scroll-mt-24 text-3xl md:text-4xl font-black mt-12 mb-6 text-slate-900" set:html={htmlContent}></h2>;
     case 'heading_2':
-      return <h3 id={slugify(htmlContent.replace(/<[^>]*>/g, ''))} class="scroll-mt-24 text-2xl md:text-3xl font-bold mt-10 mb-4 text-slate-800" set:html={htmlContent}></h3>;
     case 'heading_3':
-      return <h4 id={slugify(htmlContent.replace(/<[^>]*>/g, ''))} class="scroll-mt-24 text-xl md:text-2xl font-bold mt-8 mb-3 text-slate-800" set:html={htmlContent}></h4>;
+      const Tag = type === 'heading_1' ? 'h2' : type === 'heading_2' ? 'h3' : 'h4';
+      const headingClass = type === 'heading_1' 
+        ? "scroll-mt-24 text-3xl md:text-4xl font-black mt-12 mb-6 text-slate-900" 
+        : type === 'heading_2' 
+          ? "scroll-mt-24 text-2xl md:text-3xl font-bold mt-10 mb-4 text-slate-800" 
+          : "scroll-mt-24 text-xl md:text-2xl font-bold mt-8 mb-3 text-slate-800";
+      
+      return (
+        <div class="group heading-wrapper">
+          <Tag id={slugify(htmlContent.replace(/<[^>]*>/g, ''))} class={headingClass} set:html={htmlContent}></Tag>
+          {childrenData.length > 0 && (
+            <div class="ml-6 mb-4">
+              <RecursiveBlock blocks={childrenData} />
+            </div>
+          )}
+        </div>
+      );
 
     case 'divider':
       return <hr class="my-8 border-t-2 border-slate-100" />;
@@ -217,7 +253,6 @@ const getSafeText = (block: any) => {
       const iconData = value.icon || block.icon;
       let IconEl = null;
       
-      // Callout 배경색 처리
       const calloutColor = value.color;
       let bgClass = "bg-slate-50 border-slate-200/60"; 
       
@@ -232,7 +267,6 @@ const getSafeText = (block: any) => {
         } else if (iconData.emoji) {
            IconEl = <span class="text-2xl mr-4 select-none">{iconData.emoji}</span>;
         } else {
-           // 아이콘 이미지도 resolveImageUrl 사용
            const iconUrl = resolveImageUrl(iconData);
            if (iconUrl) {
              IconEl = <img src={iconUrl} class="w-6 h-6 mr-4 object-contain" alt="icon" />;
@@ -258,8 +292,11 @@ const getSafeText = (block: any) => {
 
     case 'column_list':
       if (!childrenData || childrenData.length === 0) return null;
+      // [핵심 수정] 자식 개수에 따라 그리드 컬럼 수 동적 결정
+      const colCount = childrenData.length;
+      const gridColsClass = colCount === 2 ? "md:grid-cols-2" : colCount >= 3 ? "md:grid-cols-3" : "grid-cols-1";
       return (
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-6 w-full my-8">
+          <div class={`grid grid-cols-1 ${gridColsClass} gap-6 w-full my-8`}>
               <RecursiveBlock blocks={childrenData} />
           </div>
       );
@@ -273,7 +310,6 @@ const getSafeText = (block: any) => {
       );
 
     case 'image':
-      // Strapi 데이터와 원본 Notion 데이터 구조 모두 대응
       const imgValue = value.image || value;
       const imgUrl = resolveImageUrl(imgValue);
       
@@ -305,7 +341,6 @@ const getSafeText = (block: any) => {
       );
 
     case 'child_database':
-      // Strapi에서 이미 가공된 Gallery 데이터가 있다면 그것을 사용하고, 없다면 NotionGallery를 통해 실시간 fetch
       if (value.items && Array.isArray(value.items)) {
          return (
             <div class="my-10">
