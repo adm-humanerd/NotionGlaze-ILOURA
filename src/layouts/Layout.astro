@@ -91,10 +91,6 @@ const [logoPrefix, logoSuffix] = siteName.includes('_') ? siteName.split('_') : 
           ))}
 
           <a href="/blog" class="transition-colors uppercase hover:text-primary">BLOG</a>
-          
-          <a href="/rss.xml" class="text-slate-400 hover:text-orange-500">
-             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor"><path d="M5 3a1 1 0 000 2c5.523 0 10 4.477 10 10a1 1 0 102 0C17 8.373 11.627 3 5 3z" /><path d="M4 9a1 1 0 011-1 7 7 0 017 7 1 1 0 11-2 0 5 5 0 00-5-5 1 1 0 01-1-1zM3 15a2 2 0 012 2 1 1 0 10-2 0 2 2 0 010-2z" /></svg>
-          </a>
         </div>
       </div>
     </nav>
@@ -102,9 +98,15 @@ const [logoPrefix, logoSuffix] = siteName.includes('_') ? siteName.split('_') : 
     <slot />
 
     <footer class="bg-white border-t border-slate-200 mt-auto py-10">
-      <div class="max-w-6xl mx-auto px-6 text-center text-slate-400 text-sm">
+      <div class="max-w-6xl mx-auto px-6 text-center text-slate-400 text-sm flex flex-col items-center">
         <p>{footerText}</p>
         <p class="mt-2 text-xs opacity-70">Powered by Astro, Strapi & Cloudflare.</p>
+        <a href="/rss.xml" class="mt-4 text-slate-400 hover:text-orange-500 transition-colors" title="RSS Feed">
+          <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+            <path d="M5 3a1 1 0 000 2c5.523 0 10 4.477 10 10a1 1 0 102 0C17 8.373 11.627 3 5 3z" />
+            <path d="M4 9a1 1 0 011-1 7 7 0 017 7 1 1 0 11-2 0 5 5 0 00-5-5 1 1 0 01-1-1zM3 15a2 2 0 012 2 1 1 0 10-2 0 2 2 0 010-2z" />
+          </svg>
+        </a>
       </div>
     </footer>
   </body>
